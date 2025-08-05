@@ -1,121 +1,134 @@
 # SLend Smart Contract
 
-SLend is a decentralized lending and deposit smart contract written in Clarity for the Stacks blockchain. It allows users to deposit STX, earn interest, set time-locks, refer others, and withdraw funds with daily limits and penalties for emergency withdrawals.
+A decentralized lending and deposit protocol on Stacks blockchain with multi-signature governance and oracle integration. Features dynamic interest rates, time-locks, referrals, and secure withdrawal controls.
 
----
+## Core Features
 
-## Features
+### Multi-Signature Governance
+- 3-10 contract owners (configurable)
+- Proposal-based governance system
+- Multiple confirmations required for actions
+- Owner management functions
 
-- **Deposit STX**: Users can deposit STX, optionally with a time-lock or a referral.
-- **Interest Tiers**: Interest rates are based on deposit size, with configurable tiers.
-- **Withdrawals**: Withdraw funds if not locked and within daily limits.
-- **Emergency Withdrawals**: Withdraw before unlock with a penalty.
-- **Time-Locks**: Lock deposits for a specified number of blocks (max 1 year).
-- **Referrals**: Refer other users for deposits.
-- **Admin Controls**: Owner can set interest tiers and daily withdrawal limits.
-- **Read-Only Queries**: Check balances, interest, lock status, referrer, and withdrawal limits.
+### Oracle Integration
+- Dynamic STX/USD price feed
+- Market-responsive interest rates
+- Price staleness checks
+- Automatic rate adjustments based on STX price
 
----
+### Deposit System
+- Standard STX deposits
+- Time-locked deposits (up to 1 year)
+- Referral-based deposits
+- Interest based on deposit size and market conditions
+
+### Withdrawal System
+- Standard withdrawals (within daily limits)
+- Emergency withdrawals (5% penalty)
+- Daily withdrawal limits per user
 
 ## Usage
 
-### Deposit
+### Governance Functions
+```clarity
+add-owner(new-owner)
+remove-owner(owner)
+create-proposal(action, target, amount)
+confirm-proposal(proposal-id)
+set-required-confirmations(count)
+```
 
-- `deposit(amount)`  
-  Deposit STX into the contract.
+### Oracle Functions
+```clarity
+set-oracle(oracle)
+update-stx-price(new-price)
+toggle-dynamic-rates()
+```
 
-- `deposit-with-lock(amount, lock-blocks)`  
-  Deposit STX with a time-lock (max 1 year).
+### Deposit Functions
+```clarity
+deposit(amount)
+deposit-with-lock(amount, lock-blocks)
+deposit-with-referral(amount, referrer)
+```
 
-- `deposit-with-referral(amount, referrer)`  
-  Deposit STX and specify a referrer.
-
-### Withdraw
-
-- `withdraw(amount)`  
-  Withdraw funds if not locked and within daily limit.
-
-- `emergency-withdraw(amount)`  
-  Withdraw funds before unlock with a 5% penalty.
-
-### Admin Functions
-
-- `set-interest-tier(threshold, rate)`  
-  Set interest rate for a deposit threshold (owner only).
-
-- `set-withdrawal-limit(new-limit)`  
-  Set daily withdrawal limit (owner only).
+### Withdrawal Functions
+```clarity
+withdraw(amount)
+emergency-withdraw(amount)
+```
 
 ### Read-Only Functions
+```clarity
+get-balance(user)
+get-balance-with-interest(user)
+get-deposit-info(user)
+get-unlock-height(user)
+get-daily-withdrawal(user)
+get-referrer(user)
+get-daily-limit()
 
-- `get-balance(user)`  
-  Get user's deposit balance.
+// New Governance Queries
+get-owners()
+get-required-confirmations()
+get-proposal(proposal-id)
 
-- `get-deposit-info(user)`  
-  Get user's deposit details.
+// New Oracle Queries
+get-stx-price()
+get-oracle-address()
+is-dynamic-rates-enabled()
+get-usd-value(stx-amount)
+```
 
-- `get-unlock-height(user)`  
-  Get user's unlock block height.
+## Interest System
 
-- `get-daily-withdrawal(user)`  
-  Get user's daily withdrawal amount.
+### Dynamic Rates
+- Base rates:
+  - 10% for deposits < 1M microSTX
+  - 15% for deposits ≥ 1M microSTX
+- Market adjustments:
+  - STX price > $1.50: -2% (min 5%)
+  - STX price ≤ $1.50: +2% (max 20%)
+- Price staleness checks (10-day threshold)
 
-- `calculate-interest(amount)`  
-  Calculate interest for a given amount.
+## Security Features
 
-- `get-interest-rate-for-amount(amount)`  
-  Get interest rate for a given amount.
+### Governance Security
+- Multi-signature requirements
+- Proposal system with timeouts
+- Configurable confirmation thresholds
 
-- `get-balance-with-interest(user)`  
-  Get user's balance including accrued interest.
+### Oracle Security
+- Price staleness checks
+- Authorized oracle updates only
+- Dynamic rate limits
 
-- `can-withdraw(user)`  
-  Check if user can withdraw.
-
-- `get-referrer(user)`  
-  Get user's referrer.
-
-- `get-daily-limit()`  
-  Get current daily withdrawal limit.
-
----
-
-## Interest Calculation
-
-- Interest is calculated in basis points (1% = 100 basis points).
-- Default tiers:
-  - `< 1,000,000 microSTX`: 10%
-  - `≥ 1,000,000 microSTX`: 15%
-- Simple interest based on deposit amount and time elapsed.
-
----
-
-## Security & Limits
-
-- Daily withdrawal limit per user.
-- Time-lock prevents withdrawal until unlock block.
-- Emergency withdrawal incurs a 5% penalty.
-- Only contract owner can change interest tiers and limits.
-
----
+### Transaction Security
+- Daily withdrawal limits
+- Time-lock enforcement
+- Emergency withdrawal penalties
+- Balance validations
 
 ## Error Codes
 
-- `ERR-INVALID-AMOUNT`: Invalid deposit/withdrawal amount.
-- `ERR-LOCK-TOO-LONG`: Lock period exceeds maximum.
-- `ERR-UNAUTHORIZED`: Unauthorized action.
-- `ERR-INVALID-RATE`: Invalid interest rate.
-- `ERR-INVALID-THRESHOLD`: Invalid interest tier threshold.
-- `ERR-SELF-REFERRAL`: Cannot refer yourself.
-- `ERR-INVALID-REFERRER`: Referrer must have a deposit.
-- `ERR-INVALID-LIMIT`: Invalid withdrawal limit.
-- `ERR-LIMIT-TOO-HIGH`: Withdrawal limit too high.
-- `ERR-INSUFFICIENT-BALANCE`: Not enough balance.
-- `ERR-FUNDS-LOCKED`: Funds are locked.
-- `ERR-DAILY-LIMIT-EXCEEDED`: Daily withdrawal limit exceeded.
+### Governance Errors
+- `ERR-NOT-OWNER`: Unauthorized owner action
+- `ERR-ALREADY-OWNER`: Owner already exists
+- `ERR-INVALID-OWNER-COUNT`: Invalid number of owners
+- `ERR-PROPOSAL-NOT-FOUND`: Proposal doesn't exist
+- `ERR-PROPOSAL-EXPIRED`: Proposal timeout reached
+- `ERR-ALREADY-VOTED`: Owner already voted
 
----
+### Oracle Errors
+- `ERR-ORACLE-ERROR`: Oracle operation failed
+- `ERR-STALE-PRICE`: Price data too old
+
+### Standard Errors
+[Previous error codes remain unchanged...]
 
 ## License
 
-This contract is provided for educational and demonstration purposes. 
+This contract is provided for educational and demonstration purposes. Use at your own risk.
+
+---
+**Note**: The protocol uses block height for time calculations. 1 year ≈ 52,560 blocks based on 10-minute block times.
