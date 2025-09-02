@@ -30,6 +30,7 @@
 (define-constant ERR-ALREADY-VOTED (err u18))
 (define-constant ERR-ORACLE-ERROR (err u19))
 (define-constant ERR-STALE-PRICE (err u20))
+(define-constant ERR-UNKNOWN-ACTION (err u21))
 
 ;; Constants
 (define-constant base-interest-rate u1000) ;; 10% in basis points
@@ -132,12 +133,14 @@
       (var-set proposal-counter proposal-id)
       (ok proposal-id))))
 
+;; FIXED: Corrected proposal expiration logic
 (define-public (confirm-proposal (proposal-id uint))
   (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR-PROPOSAL-NOT-FOUND)))
     (begin
       (asserts! (is-owner tx-sender) ERR-NOT-OWNER)
       (asserts! (not (get executed proposal)) ERR-PROPOSAL-EXPIRED)
-      (asserts! (< (+ (get created-at proposal) PROPOSAL-DURATION) stacks-block-height) ERR-PROPOSAL-EXPIRED)
+      ;; FIXED: Correct expiration check - proposal is valid if NOT expired
+      (asserts! (< (- stacks-block-height (get created-at proposal)) PROPOSAL-DURATION) ERR-PROPOSAL-EXPIRED)
       (asserts! (is-none (map-get? proposal-confirmations (tuple (proposal-id proposal-id) (owner tx-sender)))) ERR-ALREADY-VOTED)
       
       (map-set proposal-confirmations (tuple (proposal-id proposal-id) (owner tx-sender)) true)
@@ -148,12 +151,48 @@
           (execute-proposal proposal-id)
           (ok true)))))
 
+;; FIXED: Proper proposal execution with balanced parentheses
 (define-private (execute-proposal (proposal-id uint))
   (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR-PROPOSAL-NOT-FOUND)))
     (begin
+      (asserts! (>= (get confirmations proposal) (var-get required-confirmations)) ERR-UNAUTHORIZED)
       (map-set proposals proposal-id (merge proposal (tuple (executed true))))
-      ;; Here you would implement actual execution logic based on action type
-      (ok true))))
+      
+      ;; Use match for cleaner action handling
+      (if (is-eq (get action proposal) "set-rate")
+          (begin
+            (map-set interest-tiers (get amount proposal) (get amount proposal))
+            (ok true))
+          (if (is-eq (get action proposal) "set-limit")
+              (begin
+                (var-set daily-withdrawal-limit (get amount proposal))
+                (ok true))
+              (if (is-eq (get action proposal) "add-owner")
+                  (let ((current-owners (var-get owners)))
+                    (if (< (len current-owners) MAX-OWNERS)
+                        (begin
+                          (var-set owners (unwrap! (as-max-len? (append current-owners (get target proposal)) u10) ERR-INVALID-OWNER-COUNT))
+                          (ok true))
+                        (ok false)))
+                  (if (is-eq (get action proposal) "remove-owner")
+                      (let ((current-owners (var-get owners)))
+                        (if (> (len current-owners) MIN-OWNERS)
+                            (begin
+                              (var-set owner-to-remove-temp (get target proposal))
+                              (var-set owners (filter is-not-target-owner current-owners))
+                              (ok true))
+                            (ok false)))
+                      (if (is-eq (get action proposal) "set-oracle")
+                          (begin
+                            (var-set oracle-address (some (get target proposal)))
+                            (ok true))
+                          (if (is-eq (get action proposal) "set-confirmations")
+                              (if (and (> (get amount proposal) u0) (<= (get amount proposal) (len (var-get owners))))
+                                  (begin
+                                    (var-set required-confirmations (get amount proposal))
+                                    (ok true))
+                                  (ok false))
+                              (ok false))))))))))
 
 ;; Oracle integration functions
 (define-public (set-oracle (oracle principal))
@@ -278,17 +317,17 @@
         (try! (as-contract (stx-transfer? net-amount tx-sender tx-sender)))
         (ok "Emergency withdrawal completed with penalty"))))
 
-;; Admin functions (enhanced with multi-sig)
+;; FIXED: Admin functions - removed legacy owner access, only multi-sig owners allowed
 (define-public (set-interest-tier (threshold uint) (rate uint))
     (begin
-        (asserts! (or (is-eq tx-sender contract-owner) (is-owner tx-sender)) ERR-UNAUTHORIZED)
+        (asserts! (is-owner tx-sender) ERR-UNAUTHORIZED)
         (asserts! (<= rate u10000) ERR-INVALID-RATE) ;; max 100% (10000 basis points)
         (asserts! (> threshold u0) ERR-INVALID-THRESHOLD)
         (ok (map-set interest-tiers threshold rate))))
 
 (define-public (set-withdrawal-limit (new-limit uint))
     (begin
-        (asserts! (or (is-eq tx-sender contract-owner) (is-owner tx-sender)) ERR-UNAUTHORIZED)
+        (asserts! (is-owner tx-sender) ERR-UNAUTHORIZED)
         (asserts! (> new-limit u0) ERR-INVALID-LIMIT)
         (asserts! (<= new-limit u1000000000000) ERR-LIMIT-TOO-HIGH)
         (var-set daily-withdrawal-limit new-limit)
